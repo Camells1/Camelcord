@@ -10,7 +10,7 @@ import {
   doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, serverTimestamp
 } from '../vendor/firebase/firebase-firestore.js';
 
-const FRESH = 50000, BEAT = 15000;
+const FRESH = 90000, BEAT = 15000;
 const rnd = () => Math.random().toString(36).slice(2, 10);
 
 const loadSettings = () => { try { return JSON.parse(localStorage.getItem('cc.audio') || '{}'); } catch (_) { return {}; } };
@@ -337,13 +337,13 @@ export const Voice = {
 // cc_calls/{pair}: { users, from, state: 'ringing' | 'active', at }. The caller makes it, the other
 // person sees it ring and either joins (state: active) or declines (deletes it).
 export const Calls = {
-  me: null, incoming: null, outgoing: null, onChange: null, onDeclined: null, _unsub: null, _ringTimer: null, _joinedAt: 0,
+  me: null, incoming: null, outgoing: null, onChange: null, onDeclined: null, _unsub: null, _ringTimer: null, _joinedAt: 0, _dismissed: new Set(),
   start(me) {
     this.stop(); this.me = me;
     this._unsub = onSnapshot(query(collection(db, 'cc_calls'), where('users', 'array-contains', me.uid)), snap => {
       const calls = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const fresh = c => Date.now() - millis(c.at) < 60000;
-      this.incoming = calls.find(c => c.from !== me.uid && c.state === 'ringing' && fresh(c)) || null;
+      const fresh = c => Date.now() - millis(c.at) < 45000;
+      this.incoming = calls.find(c => c.from !== me.uid && c.state === 'ringing' && fresh(c) && !this._dismissed.has(c.id + millis(c.at))) || null;
       const mine = calls.find(c => c.from === me.uid);
       // The other person declined or hung up: the call document is gone while we are still in it
       const inCall = Voice.room?.kind === 'call' ? Voice.room.path.split('/')[1] : null;
@@ -372,6 +372,7 @@ export const Calls = {
   },
   async decline() {
     const c = this.incoming; if (!c) return;
+    this._dismissed.add(c.id + millis(c.at));
     this.incoming = null;
     await deleteDoc(doc(db, 'cc_calls', c.id)).catch(() => {});
     this.onChange?.();

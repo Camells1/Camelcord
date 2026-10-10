@@ -1,6 +1,6 @@
 {
   "name": "camelcord",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "Camel Studios",
   "description": "Camelcord: servers, text channels and voice calls with your Camel Studios account.",
   "main": "electron/main.js",
@@ -47,4 +47,3 @@
     }
   }
 }
-

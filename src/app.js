@@ -72,7 +72,8 @@ const ICON = {
   ticket: '<path d="M3 9a2 2 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a2 2 0 0 1 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/><path d="M13 5v14" stroke-dasharray="2 3"/>',
   bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   bellOff: '<path d="M13.7 21a1.9 1.9 0 0 1-3.4 0M18 8a6 6 0 0 0-9.3-5M6 8c0 7-3 9-3 9h14M1 1l22 22"/>',
-  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>'
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  expand: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'
 };
 const svgEl = (n, cls = '') => { const t = document.createElement('template'); t.innerHTML = `<svg class="i ${cls}" viewBox="0 0 24 24">${ICON[n]}</svg>`; return t.content.firstChild; };
 const camelSvg = w => { const t = document.createElement('template'); t.innerHTML = `<svg viewBox="0 0 64 64" width="${w}" height="${w}"><use href="#camelglyph"/></svg>`; return t.content.firstChild; };
@@ -266,7 +267,7 @@ function menu(x, y, items) {
 document.addEventListener('mousedown', e => {
   if (!e.target.closest('.menu, .card, .modal, .emoji-pop, [data-keep]')) for (const el of [...layer().children]) if (/\b(menu|card|emoji-pop)\b/.test(el.className)) el.remove();
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOverlays(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (S.theater) { S.theater = null; schedule(); } else closeOverlays(); } });
 
 const STD_EMOJI = '😀 😂 🤣 😊 😍 😎 🤔 😅 😭 😡 😴 🥳 👍 👎 👏 🙏 💪 🔥 ✨ ❤️ 💀 👀 🎉 🌟 🎮 🎵 🍕 🍔 ☕ 🏆 🚀 💯 ✅ ❌ 😈 🤝 🫡 🥲 😤 🤯 😬 🙃 😇 🤠 🧠 👾 🐪 🌵'.split(' ');
 function emojiPicker(anchor, onPick) {
@@ -354,15 +355,20 @@ async function leaveVoice() {
   if (Voice.room?.kind === 'call') await Calls.hangup(); else await Voice.leave();
 }
 
-let lastRoster = new Set();
+let stableRoster = new Set(), rosterTimer = null;
 Voice.onChange = () => {
-  const now = new Set(Voice.participants.keys());
-  if (Voice.room && lastRoster.size) {
-    for (const u of now) if (!lastRoster.has(u) && u !== Account.user?.uid) sfx.join();
-    for (const u of lastRoster) if (!now.has(u) && u !== Account.user?.uid) sfx.leave();
-  }
-  lastRoster = Voice.room ? now : new Set();
   schedule();
+  if (!Voice.room) { stableRoster = new Set(); clearTimeout(rosterTimer); return; }
+  // Only when the room has looked the same for 2.5 seconds: a flicker is not someone joining or leaving
+  clearTimeout(rosterTimer);
+  rosterTimer = setTimeout(() => {
+    const now = new Set(Voice.participants.keys()), me = Account.user?.uid;
+    if (stableRoster.size) {
+      for (const u of now) if (!stableRoster.has(u) && u !== me) sfx.join();
+      for (const u of stableRoster) if (!now.has(u) && u !== me) sfx.leave();
+    }
+    stableRoster = now;
+  }, 2500);
 };
 Calls.onDeclined = () => { toast('Call ended.'); Calls.hangup(); };
 
@@ -900,12 +906,12 @@ function renderMessages(el, list, ctx, name, error) {
 const videoCache = new Map(); // uid -> <video>
 function watchVideo(uid, stream) {
   let v = videoCache.get(uid);
-  if (!v) { v = h('video', { autoplay: true, playsinline: true, muted: true, class: 'screenvid', title: 'Double-click for full screen', ondblclick: e => (document.fullscreenElement ? document.exitFullscreen() : e.currentTarget.requestFullscreen?.()) }); v.muted = true; videoCache.set(uid, v); }
+  if (!v) { v = h('video', { autoplay: true, playsinline: true, muted: true, class: 'screenvid', title: 'Double-click for full screen', ondblclick: e => (document.fullscreenElement ? document.exitFullscreen() : e.currentTarget.closest('.wbox')?.requestFullscreen?.()) }); v.muted = true; videoCache.set(uid, v); }
   if (v.srcObject !== stream) { v.srcObject = stream; v.play?.().catch(() => {}); }
   return v;
 }
 function renderStage(el, mini) {
-  if (S.holdStage) return;                     // someone is dragging a volume slider: leave it alone
+  if (S.holdStage || document.fullscreenElement) return;   // dragging a slider / watching full screen: leave it alone
   const me = Account.user, v = S.view;
   let path, tiles = [], connected = false;
   if (mini) path = `cc_calls/${pairOf(me.uid, v.uid)}`; else path = Servers.channelPath(v.sid, v.cid);
@@ -942,9 +948,14 @@ function renderStage(el, mini) {
         oninput: e => Voice.setMaster(e.target.value / 100) })),
       h('button', { class: 'cbtn end', title: 'Leave', onclick: leaveVoice }, svgEl('phone', 'hang')))
     : h('div', { class: 'controls' }, h('button', { class: 'cbtn join', onclick: () => joinVoice(v.sid, v.cid) }, svgEl('phone'), 'Join voice'));
+  const sig = JSON.stringify([mini, connected, v.uid || v.cid, tiles.map(t => [t.uid, t.id, !!t.muted, !!t.deafened, !!t.talking, t.conn || '', !!t.ringing, !!t.screen]),
+    watching.map(w => [w.uid, Voice.screens.get(w.uid)?.id]), Voice.sharing, S.theater, Voice.muted, Voice.deafened, Voice.noMic, Voice.error, Voice.ptt, Voice.pttHeld, Math.round(Voice.master * 100), AudioSettings.get().noise]);
+  if (el.dataset.sig === sig && el.childElementCount) return;
+  el.dataset.sig = sig;
   el.classList.toggle('watching', watching.length > 0);
   el.replaceChildren(
-    ...(watching.length ? [h('div', { class: 'watch' + (watching.length > 1 ? ' multi' : '') }, watching.map(w => h('div', { class: 'wbox' }, watchVideo(w.uid, Voice.screens.get(w.uid)), h('span', { class: 'wname' }, `🖥️ ${nameOnly(w.id)}'s screen`))))] : []),
+    ...(watching.length ? [h('div', { class: 'watch' + (watching.length > 1 ? ' multi' : '') }, watching.map(w => h('div', { class: 'wbox' + (S.theater === w.uid ? ' theater' : '') }, watchVideo(w.uid, Voice.screens.get(w.uid)), h('span', { class: 'wname' }, `🖥️ ${nameOnly(w.id)}'s screen`),
+      h('button', { class: 'fsbtn', title: 'Full screen (Esc to leave)', onclick: e => { const box = e.currentTarget.closest('.wbox'); if (document.fullscreenElement) { document.exitFullscreen(); return; } if (S.theater === w.uid) { S.theater = null; schedule(); return; } const fallback = () => { S.theater = w.uid; schedule(); }; let p; try { p = box.requestFullscreen?.(); } catch (_) {} if (p && p.catch) p.catch(fallback); else fallback(); } }, svgEl('expand'))))) ] : []),
     h('div', { class: 'tiles' }, tiles.length ? tiles.map(tile) : h('div', { class: 'empty' }, 'Nobody is here yet. Be the first to join!')), hint, ctl);
 }
 
@@ -1494,6 +1505,7 @@ function boot() {
   for (const b of document.querySelectorAll('[data-win]')) b.onclick = () => host.win[b.dataset.win]();
   host.win.onFocus?.(f => { S.focused = f; if (f) host.attention(false); });
   wireLogin(); initCenter(); wireKeys();
+  document.addEventListener('fullscreenchange', () => schedule());
   host.update.onState?.(u => { S.update = u; renderUpdate(); });
   host.update.state?.().then(u => { S.update = u; renderUpdate(); }).catch(() => {});
 
@@ -1505,7 +1517,7 @@ function boot() {
     sfx.msg(); ping(nameOnly(idOf(uid)), m.text || 'Sent a picture');
   };
   Servers.onIncoming = (sid, ch, m) => {
-    if (quiet('ch', ch.id) || Servers.isMuted(sid)) return;
+    if (m.bot || quiet('ch', ch.id) || Servers.isMuted(sid)) return;
     sfx.msg(); ping(`${m.bot ? 'Bot' : nameOnly(idOf(m.from))} in ${ch.name}`, m.text || 'Sent a picture');
   };
   setInterval(() => { if (Account.user) schedule(); }, 20000); // re-check who is still online / in voice, time left on giveaways

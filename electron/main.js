@@ -30,8 +30,8 @@ else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
   app.whenReady().then(() => {
     // Microphone for calls, notifications for messages; nothing else
-    session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(['media', 'notifications', 'display-capture'].includes(permission)));
-    session.defaultSession.setPermissionCheckHandler((_wc, permission) => ['media', 'notifications', 'display-capture'].includes(permission));
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(['media', 'notifications', 'display-capture', 'fullscreen', 'clipboard-sanitized-write'].includes(permission)));
+    session.defaultSession.setPermissionCheckHandler((_wc, permission) => ['media', 'notifications', 'display-capture', 'fullscreen', 'clipboard-sanitized-write'].includes(permission));
     createWindow();
     updater.init(s => send('update:state', s));
   });

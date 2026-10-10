@@ -120,7 +120,8 @@ export const DMs = {
       this._watch.set(uid, onSnapshot(q, s => {
         const m = s.docs[0] && msgOf(s.docs[0]);
         if (!m) return;
-        const fresh = this._seeded.has(uid) && m.from !== this.me.uid && !this.last.get(uid)?.pending && this.last.get(uid)?.id !== m.id;
+        const prev = this.last.get(uid);
+        const fresh = this._seeded.has(uid) && m.from !== this.me.uid && !prev?.pending && prev?.id !== m.id && (!prev || m.at > prev.at) && Date.now() - m.at < 30000;
         this.last.set(uid, m); this._seeded.add(uid);
         if (fresh) this.onIncoming?.(uid, m);
         this.onChange?.();

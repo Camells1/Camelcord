@@ -19,7 +19,7 @@ export const COLORS = ['#5b8cff', '#7b6cf0', '#43b3c4', '#43b581', '#e0a34a', '#
 export const ICONS = ['💬', '🎮', '🎵', '🚀', '⚔️', '🔥', '🎨', '📚', '🧠', '🌊', '🍕', '👾', '🌵', '🐪', '☀️', '🐸'];
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const makeCode = () => Array.from({ length: 7 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
-const FRESH = 50000; // a voice participant counts if they checked in within this long
+const FRESH = 90000; // a voice participant counts if they checked in within this long
 
 // A listener that logs what went wrong and re-subscribes by itself (a dead listener means a frozen screen)
 export const listenErrors = [];
@@ -112,7 +112,7 @@ export const Servers = {
             const m = s.docs[0] && msgOf(s.docs[0]);
             if (!m) { this._lastSeeded.add(c.id); return; }
             const old = this.last.get(c.id);
-            const fresh = this._lastSeeded.has(c.id) && m.from !== this.me?.uid && old?.id !== m.id && !m.pending;
+            const fresh = this._lastSeeded.has(c.id) && m.from !== this.me?.uid && old?.id !== m.id && !m.pending && !m.bot && (!old || m.at > old.at) && Date.now() - m.at < 30000;
             this.last.set(c.id, m); this._lastSeeded.add(c.id);
             if (fresh) this.onIncoming?.(sid, c, m);
             this.onChange?.();

@@ -491,12 +491,12 @@ body.reduce-motion * { animation: none !important; transition: none !important; 
   input, textarea, select { font-size: 16px; }
 
   /* one pane at a time: the list (rail + rooms) or the chat */
-  #app, #app.no-members, #app.hide-members { grid-template-columns: minmax(0, 1fr); grid-template-rows: 50px minmax(0, 1fr); }
-  #rail { grid-column: 1; padding: 0 8px 4px; }
-  #side, #center, #members { grid-column: 1; grid-row: 2; margin: 0; border-radius: 0; }
+  #app, #app.no-members, #app.hide-members { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  #rail { grid-column: 1; grid-row: 2; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg0); overflow-x: auto; }
+  #side, #center, #members { grid-column: 1; grid-row: 1; margin: 0; border-radius: 0; }
+  #side { padding-top: 4px; }
   #app.m-chat { grid-template-rows: minmax(0, 1fr); }
   #app.m-chat #rail, #app.m-chat #side { display: none; }
-  #app.m-chat #center { grid-row: 1; }
   #app.m-nav #center { display: none; }
   #members { display: none; }
   #app.m-people #members { display: block; position: fixed; top: 0; right: 0; bottom: 0; width: min(82vw, 320px); z-index: 25; box-shadow: -10px 0 40px rgba(0, 0, 0, .55); padding-top: calc(env(safe-area-inset-top) + 10px); border-radius: 0; }
@@ -530,3 +530,34 @@ body.reduce-motion * { animation: none !important; transition: none !important; 
   .login-panel { padding: 24px; }
   .toast { max-width: 92vw; }
 }
+
+/* ===== watching a shared screen: big, not squeezed, with a real full-screen button ===== */
+.stage.mini.watching { flex: 1 1 0; height: auto; min-height: 0; border-bottom: 1px solid var(--line); }
+#center:has(.stage.mini.watching) .msgs { flex: 0 0 150px; }
+.stage.watching .watch { flex: 1 1 0; min-height: 0; }
+.wbox { min-height: 0; aspect-ratio: auto; }
+.screenvid { object-fit: contain; }
+.fsbtn { position: absolute; right: 10px; top: 8px; width: 34px; height: 34px; border-radius: 10px; background: rgba(0, 0, 0, .6); color: #fff; display: grid; place-items: center; opacity: .85; z-index: 3; }
+.fsbtn:hover { opacity: 1; background: rgba(0, 0, 0, .8); }
+.fsbtn svg { width: 18px; height: 18px; }
+.wbox:fullscreen { background: #000; border-radius: 0; width: 100vw; height: 100vh; }
+.wbox:fullscreen .screenvid { width: 100vw; height: 100vh; object-fit: contain; }
+.wbox:fullscreen .fsbtn { top: 14px; right: 14px; }
+.wbox:fullscreen .wname { top: 18px; left: 18px; }
+
+/* the shared picture always fits its box: letterboxed, never cropped or stretched */
+.wbox { display: block; position: relative; overflow: hidden; }
+.wbox .screenvid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.stage.watching .tile { flex: 0 1 150px; height: 64px; }
+.stage.watching .tile .av { width: 34px; height: 34px; font-size: 14px; }
+.stage.watching .tile .nm { font-size: 12px; bottom: 4px; }
+.stage.watching .tile .vol { bottom: 18px; }
+.stage.watching .stage-hint { padding-bottom: 0; min-height: 0; }
+.stage.watching .controls { padding: 8px; }
+#center:has(.stage.mini.watching) .msgs { flex: 0 0 110px; }
+.wbox:fullscreen .screenvid { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* "theater": the shared screen fills the whole window when real full screen is not available */
+.wbox.theater { position: fixed; inset: 0; z-index: 40; border-radius: 0; background: #000; }
+.wbox.theater .fsbtn { top: 14px; right: 14px; }
+.wbox.theater .wname { top: 18px; left: 18px; }

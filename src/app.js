@@ -12,10 +12,15 @@ import { limit } from './limits.js';
 import { Bots } from './bots.js';
 
 const host = window.camel || {
-  win: { min() {}, max() {}, close() {}, onState() {}, onFocus() {} }, open: u => window.open(u, '_blank'), notify() {}, attention() {},
+  win: { min() {}, max() {}, close() {}, onState() {}, onFocus() {} }, open: u => window.open(u, '_blank'),
+  notify(t, b) { try { if (window.Notification && Notification.permission === 'granted' && document.hidden) new Notification(t, { body: b }); } catch (_) {} }, attention() {},
   info: async () => ({ version: 'web' }), zoom: null, screens: null, startup: async () => false,
   update: { state: async () => ({ state: 'none' }), check: async () => ({ state: 'none' }), install: async () => false, onState() {} }
 };
+
+const IS_WEB = !window.camel;                     // the phone / browser version has no desktop shell
+const isMobile = () => window.matchMedia('(max-width: 760px)').matches;
+const canShare = () => !!host.screens || !!navigator.mediaDevices?.getDisplayMedia;
 
 // ---------------------------------------------------------------- tiny DOM helpers
 const $ = s => document.querySelector(s);
@@ -158,7 +163,8 @@ const S = {
   raf: 0, centerKey: '', focused: true, presKey: '', serversLoaded: false, attach: '',
   hideMembers: store.get('cc.hidePeople', '0') === '1',
   status: store.get('cc.status', 'online'), search: '', searchOpen: false, holdStage: false,
-  update: { state: 'none' }, lastActive: Date.now(), autoIdle: false
+  update: { state: 'none' }, lastActive: Date.now(), autoIdle: false,
+  mview: 'nav', peopleOpen: false                // phones show one pane at a time: the list ('nav') or the chat
 };
 try { const n = JSON.parse(store.get('cc.nav', 'null')); if (n?.sel) { S.sel = n.sel; S.view = n.view || S.view; } } catch (_) {}
 const drafts = new Map();
@@ -212,12 +218,14 @@ const statusText = uid => STATUS_LABEL[Friends.statusOf(uid)] || 'Offline';
 const profileStatus = id => Profiles.forId(id)?.status || '';
 function go(sel, view) {
   S.sel = sel; S.view = view; S.search = ''; S.searchOpen = false;
+  if (isMobile()) { S.mview = 'chat'; S.peopleOpen = false; }
   store.set('cc.nav', JSON.stringify({ sel, view }));
   if (view.kind === 'dm') DMs.open(view.uid); else DMs.close();
   if (view.kind === 'text' || view.kind === 'ticket') Servers.open(view.sid, view.cid); else Servers.close();
   schedule();
 }
 function openServer(sid) {
+  if (isMobile()) { S.sel = sid; S.mview = 'nav'; S.peopleOpen = false; schedule(); return; }
   const chans = Servers.channelsOf(sid), first = chans.find(c => c.kind === 'text') || chans[0];
   if (first) go(sid, { kind: first.kind, sid, cid: first.id });
   else { S.sel = sid; S.view = { kind: 'pending', sid }; schedule(); }
@@ -395,7 +403,7 @@ function renderRail() {
   const rail = $('#rail');
   const dmUnread = friendsAccepted().filter(f => DMs.unread(f.uid)).length + Friends.list.filter(f => f.incoming).length;
   const items = [];
-  items.push(h('button', { class: 'rail-btn home' + (S.sel === 'home' ? ' active' : ''), title: 'Home', onclick: () => go('home', S.view.kind === 'dm' || S.view.kind === 'friends' ? S.view : { kind: 'friends' }) },
+  items.push(h('button', { class: 'rail-btn home' + (S.sel === 'home' ? ' active' : ''), title: 'Home', onclick: () => { go('home', S.view.kind === 'dm' || S.view.kind === 'friends' ? S.view : { kind: 'friends' }); if (isMobile()) S.mview = 'nav'; } },
     camelSvg(26), dmUnread ? h('span', { class: 'badge' }, dmUnread) : null));
   items.push(h('div', { class: 'rail-sep' }));
   for (const s of Servers.list) {
@@ -436,7 +444,7 @@ function voiceBar() {
   return h('div', { class: 'voicebar' + (connecting ? ' connecting' : '') },
     h('div', { class: 'top' }, svgEl('signal', 'signal'),
       h('div', { class: 'st' }, h('b', {}, text), h('span', {}, Voice.room.label)),
-      h('button', { class: 'ibtn' + (Voice.sharing ? ' sel' : ''), title: Voice.sharing ? 'Stop sharing' : 'Share your screen', onclick: shareFlow }, svgEl('monitor')),
+      canShare() ? h('button', { class: 'ibtn' + (Voice.sharing ? ' sel' : ''), title: Voice.sharing ? 'Stop sharing' : 'Share your screen', onclick: shareFlow }, svgEl('monitor')) : null,
       h('button', { class: 'ibtn red', title: 'Disconnect', onclick: leaveVoice }, svgEl('phone', 'hang'))));
 }
 
@@ -788,7 +796,7 @@ function renderCenter() {
   let title = [];
   const tools = [];
   const searchBtn = h('button', { class: 'ibtn' + (S.searchOpen ? ' sel' : ''), title: 'Search this room', onclick: () => { S.searchOpen = !S.searchOpen; if (!S.searchOpen) S.search = ''; schedule(); if (S.searchOpen) setTimeout(() => $('#c-search-in').focus(), 0); } }, svgEl('search'));
-  const peopleBtn = S.sel !== 'home' ? h('button', { class: 'ibtn' + (S.hideMembers ? '' : ' sel'), title: 'Show or hide people', onclick: () => { S.hideMembers = !S.hideMembers; store.set('cc.hidePeople', S.hideMembers ? '1' : '0'); schedule(); } }, svgEl('users')) : null;
+  const peopleBtn = S.sel !== 'home' ? h('button', { class: 'ibtn' + (S.hideMembers ? '' : ' sel'), title: 'Show or hide people', onclick: () => { if (isMobile()) S.peopleOpen = !S.peopleOpen; else { S.hideMembers = !S.hideMembers; store.set('cc.hidePeople', S.hideMembers ? '1' : '0'); } schedule(); } }, svgEl('users')) : null;
   if (v.kind === 'friends') {
     showPage = true;
     const incoming = Friends.list.filter(f => f.incoming).length;
@@ -826,6 +834,7 @@ function renderCenter() {
     title = [svgEl('volume'), ch?.name || '…', h('span', { class: 'topic' }, 'Voice room'), h('span', { class: 'grow' }), peopleBtn];
     showStage = true; renderStage(stage, false);
   } else title = ['Loading…'];
+  title.unshift(h('button', { class: 'ibtn backbtn', title: 'Back', onclick: () => { S.mview = 'nav'; S.peopleOpen = false; schedule(); } }, svgEl('chev', 'left')));
   head.replaceChildren(...title.filter(Boolean));
   page.classList.toggle('hidden', !showPage);
   stage.classList.toggle('hidden', !showStage); stage.classList.toggle('mini', mini);
@@ -867,7 +876,8 @@ function renderMessages(el, list, ctx, name, error) {
     const who = isBot
       ? h('span', { class: 'who' }, botName, h('span', { class: 'bottag' }, 'BOT'))
       : ((first && (!mine || Prefs.get('layout') === 'list')) ? h('span', { class: 'who', style: `color:${nameColor(id)}`, onclick: e => profileCard(m.from, id, e.clientX + 8, e.clientY) }, nameOnly(id)) : null);
-    kids.push(h('div', { class: 'msg' + (first ? ' first' : '') + (mine ? ' mine' : '') + (m.pending ? ' pending' : '') + (isBot ? ' bot' : '') },
+    kids.push(h('div', { class: 'msg' + (first ? ' first' : '') + (mine ? ' mine' : '') + (m.pending ? ' pending' : '') + (isBot ? ' bot' : ''),
+      onclick: e => { if (isMobile() && !e.target.closest('a,button,img,.who,.re,.tools')) e.currentTarget.classList.toggle('sel'); } },
       h('div', { class: 'gut' }, (Prefs.get('layout') === 'list' ? first : last && !mine) ? (isBot ? h('div', { class: 'av botav' }, botIcon) : h('div', { onclick: e => profileCard(m.from, id, e.clientX + 8, e.clientY) }, avatar(id))) : null),
       h('div', { class: 'bubble' },
         first || isBot ? who : null,
@@ -926,7 +936,7 @@ function renderStage(el, mini) {
     ? h('div', { class: 'controls' },
       h('button', { class: 'cbtn' + (Voice.muted ? ' off' : ''), title: Voice.muted ? 'Unmute' : 'Mute', onclick: () => Voice.setMuted(!Voice.muted) }, svgEl(Voice.muted ? 'micoff' : 'mic')),
       h('button', { class: 'cbtn' + (Voice.deafened ? ' off' : ''), title: Voice.deafened ? 'Undeafen' : 'Deafen', onclick: () => Voice.setDeafened(!Voice.deafened) }, svgEl(Voice.deafened ? 'headoff' : 'head')),
-      h('button', { class: 'cbtn' + (Voice.sharing ? ' live' : ''), title: Voice.sharing ? 'Stop sharing' : 'Share your screen', onclick: shareFlow }, svgEl('monitor')),
+      canShare() ? h('button', { class: 'cbtn' + (Voice.sharing ? ' live' : ''), title: Voice.sharing ? 'Stop sharing' : 'Share your screen', onclick: shareFlow }, svgEl('monitor')) : null,
       h('div', { class: 'mastervol', title: 'Everyone’s volume' }, svgEl('volume'), h('input', { type: 'range', min: 0, max: 100, value: Math.round(Voice.master * 100),
         onpointerdown: () => { S.holdStage = true; }, onpointerup: () => { S.holdStage = false; schedule(); }, onchange: () => { S.holdStage = false; schedule(); },
         oninput: e => Voice.setMaster(e.target.value / 100) })),
@@ -991,6 +1001,9 @@ function renderMembers() {
   const srv = S.sel !== 'home' ? Servers.server(S.sel) : null;
   app.classList.toggle('no-members', !srv);
   app.classList.toggle('hide-members', !!srv && S.hideMembers);
+  app.classList.toggle('m-chat', S.mview === 'chat');
+  app.classList.toggle('m-nav', S.mview !== 'chat');
+  app.classList.toggle('m-people', !!srv && !!S.peopleOpen);
   if (!srv) { el.replaceChildren(); return; }
   const rows = srv.members.map(uid => ({ uid, id: srv.ids?.[uid] || idOf(uid), st: uid === Account.user.uid ? (S.status === 'invisible' ? 'offline' : S.status) : Friends.statusOf(uid) }));
   const byName = (a, b) => nameOnly(a.id).localeCompare(nameOnly(b.id));
@@ -1342,7 +1355,8 @@ async function settingsModal(tab = 'appearance') {
   const notifications = () => [h('h2', {}, 'Notifications'), h('p', { class: 'sub' }, 'Do not disturb (click your name, top-left) silences everything below.'),
     toggle('Desktop notifications', 'notify', 'when Camelcord is in the background'), toggle('Message sounds', 'sounds'), toggle('Ring for incoming calls', 'ringSound'),
     toggle('Sounds when people join or leave voice', 'joinSounds'), toggle('Flash the taskbar for calls', 'flash'),
-    h('p', { class: 'sub', style: 'margin-top:14px' }, 'You can also mute a single server: right-click it in the strip at the top.')];
+    IS_WEB && window.Notification && Notification.permission !== 'granted' ? h('button', { class: 'btn gold', style: 'margin-top:10px', onclick: () => Notification.requestPermission().then(() => settingsModal('notifications')) }, 'Allow notifications on this device') : null,
+    h('p', { class: 'sub', style: 'margin-top:14px' }, 'You can also mute a single server: right-click it (or long-press it) in the strip at the top.')].filter(Boolean);
 
   const voice = () => {
     const cfg = AudioSettings.get();
@@ -1511,4 +1525,5 @@ function boot() {
   setTimeout(() => { if (!Account.ready) showScreen('login'); }, 6000);
 }
 boot();
+if (IS_WEB && 'serviceWorker' in navigator && location.protocol.startsWith('http') && !new URLSearchParams(location.search).has('emu')) navigator.serviceWorker.register('sw.js').catch(() => {});
 if (new URLSearchParams(location.search).has('emu')) window.__cc = { Voice, Calls, Friends, DMs, Servers, Account, Profiles, Themes, Prefs, Bots, S };

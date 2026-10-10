@@ -30,6 +30,7 @@ app.whenReady().then(async () => {
   const png = async size => Buffer.from((await win.webContents.executeJavaScript(render(size))).split(',')[1], 'base64');
   const out = path.join(__dirname, '..', 'assets');
   fs.writeFileSync(path.join(out, 'icon.png'), await png(512));
+  for (const s of [180, 192, 512]) fs.writeFileSync(path.join(out, 'icon-' + s + '.png'), await png(s));
   const sizes = [16, 24, 32, 48, 64, 128, 256];
   fs.writeFileSync(path.join(out, 'icon.ico'), ico(await Promise.all(sizes.map(async size => ({ size, buf: await png(size) })))));
   console.log('icons written');

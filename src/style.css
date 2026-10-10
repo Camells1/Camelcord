@@ -478,3 +478,55 @@ body.compact .msg.first { margin-top: 4px; }
 body.compact .bubble { padding: 3px 10px 2px; }
 body.compact .row { min-height: 30px; }
 body.reduce-motion * { animation: none !important; transition: none !important; }
+
+/* ===== phones and tablets (the installable web app) ===== */
+.backbtn { display: none; }
+.backbtn svg.left { transform: rotate(90deg); }
+.msg.sel .tools { display: flex; }
+@media (hover: none) { .tile .vol { opacity: 1; } }
+
+@media (max-width: 760px) {
+  body { height: 100dvh; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  #bar { display: none; }
+  input, textarea, select { font-size: 16px; }
+
+  /* one pane at a time: the list (rail + rooms) or the chat */
+  #app, #app.no-members, #app.hide-members { grid-template-columns: minmax(0, 1fr); grid-template-rows: 50px minmax(0, 1fr); }
+  #rail { grid-column: 1; padding: 0 8px 4px; }
+  #side, #center, #members { grid-column: 1; grid-row: 2; margin: 0; border-radius: 0; }
+  #app.m-chat { grid-template-rows: minmax(0, 1fr); }
+  #app.m-chat #rail, #app.m-chat #side { display: none; }
+  #app.m-chat #center { grid-row: 1; }
+  #app.m-nav #center { display: none; }
+  #members { display: none; }
+  #app.m-people #members { display: block; position: fixed; top: 0; right: 0; bottom: 0; width: min(82vw, 320px); z-index: 25; box-shadow: -10px 0 40px rgba(0, 0, 0, .55); padding-top: calc(env(safe-area-inset-top) + 10px); border-radius: 0; }
+  .backbtn { display: grid; }
+
+  .row { min-height: 46px; }
+  .ibtn { width: 40px; height: 40px; }
+  .head { padding: 0 8px; }
+  .head .tab { padding: 6px 10px; }
+  .bubble { max-width: 88%; }
+  .composer { padding: 0 8px calc(8px + env(safe-area-inset-bottom)); }
+  .page { padding: 6px 10px; }
+  .flist { grid-template-columns: 1fr; }
+  .tile { flex: 1 1 140px; height: 130px; }
+  .mastervol { display: none; }
+  .stage .controls { flex-wrap: wrap; }
+  .incoming { left: 8px; right: 8px; width: auto; top: calc(env(safe-area-inset-top) + 8px); }
+  .emoji-pop { width: 92vw; }
+
+  .modal, .modal.wide { width: 94vw; max-height: 90dvh; padding: 18px; }
+  .modal.huge { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); width: 96vw; height: 90dvh; }
+  .modal.huge nav { flex-direction: row; overflow-x: auto; padding: 8px; gap: 4px; }
+  .modal.huge nav h4 { display: none; }
+  .modal.huge nav button { white-space: nowrap; }
+  .modal.huge .pane { padding: 16px; }
+  .themes { grid-template-columns: repeat(2, 1fr); }
+  .sliderrow { grid-template-columns: 90px 1fr 36px; }
+
+  #login { grid-template-columns: 1fr; }
+  .login-art { display: none; }
+  .login-panel { padding: 24px; }
+  .toast { max-width: 92vw; }
+}

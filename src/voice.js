@@ -18,6 +18,9 @@ export const AudioSettings = {
   get: loadSettings,
   set(patch) { localStorage.setItem('cc.audio', JSON.stringify({ ...loadSettings(), ...patch })); }
 };
+// How loud everyone is for me: one master level and one level per person (0 to 1)
+const loadVol = () => { try { return JSON.parse(localStorage.getItem('cc.vol') || '{}'); } catch (_) { return {}; } };
+const clamp01 = n => Math.min(1, Math.max(0, +n || 0));
 function iceServers() {
   const list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
   try { const t = JSON.parse(localStorage.getItem('cc.turn') || 'null'); if (t?.urls) list.push(t); } catch (_) {}
@@ -34,11 +37,32 @@ export const Voice = {
   conn: new Map(),        // uid -> 'connecting' | 'connected' | 'failed'
   speaking: new Set(),    // uids that are talking right now (includes me)
   noMic: false,
+  ptt: false, pttHeld: false, // push-to-talk: the mic is only open while the key is held
+  sharing: false,         // am I sharing my screen?
+  screens: new Map(),     // uid -> MediaStream of that person's shared screen
   onChange: null,
   _s: null,               // everything that belongs to the current session of the room
 
   get active() { return !!this.room; },
   isIn(path) { return this.room?.path === path; },
+
+  // ---- volume (affects only what I hear)
+  get master() { const m = loadVol().master; return m == null ? 1 : clamp01(m); },
+  volumeOf(uid) { const v = (loadVol().users || {})[uid]; return v == null ? 1 : clamp01(v); },
+  setMaster(v) {
+    const d = loadVol(); d.master = clamp01(v); localStorage.setItem('cc.vol', JSON.stringify(d));
+    this._volumes();
+  },
+  setVolume(uid, v) {
+    const d = loadVol(); d.users = d.users || {}; d.users[uid] = clamp01(v); localStorage.setItem('cc.vol', JSON.stringify(d));
+    this._volumes();
+  },
+  _volumes() { for (const p of this._s?.peers.values() || []) if (p.audio) p.audio.volume = clamp01(this.master * this.volumeOf(p.uid)); },
+
+  // ---- push to talk
+  setPtt(on) { this.ptt = !!on; this.pttHeld = false; this._apply(); },
+  pttHold(down) { if (this.ptt && this.pttHeld !== down) { this.pttHeld = down; this._apply(); } },
+  get micOpen() { return !this.muted && (!this.ptt || this.pttHeld); },
 
   async join(path, label, kind, me) {
     if (this.room) await this.leave();
@@ -65,10 +89,11 @@ export const Voice = {
   async leave() {
     const s = this._s, room = this.room;
     if (!s || !room) return;
-    s.closed = true; this._s = null;
+    s.closed = true; this._s = null; this.sharing = false; this.screens = new Map();
     s.timers.forEach(clearInterval); s.subs.forEach(un => un());
     for (const uid of [...s.peers.keys()]) this._closePeer(s, uid);
     s.stream?.getTracks().forEach(t => t.stop());
+    s.shareStream?.getTracks().forEach(t => t.stop());
     for (const m of s.meters.values()) { try { m.src.disconnect(); } catch (_) {} }
     try { await s.ctx?.close(); } catch (_) {}
     this.room = null; this.state = 'idle'; this.participants = new Map(); this.conn = new Map(); this.speaking = new Set();
@@ -90,15 +115,49 @@ export const Voice = {
   },
   _apply() {
     const s = this._s;
-    if (s?.track) s.track.enabled = !this.muted;
+    if (s?.track) s.track.enabled = this.micOpen;
     for (const a of s?.audios || []) a.muted = this.deafened;
-    if (s) updateDoc(this._self(), { muted: this.muted, deafened: this.deafened }).catch(() => {});
+    if (s && this._lastSent !== `${this.muted}${this.deafened}`) { this._lastSent = `${this.muted}${this.deafened}`; updateDoc(this._self(), { muted: this.muted, deafened: this.deafened }).catch(() => {}); }
     this._change();
+  },
+
+  // ---- screen sharing
+  // `stream` is a MediaStream with a video track (from the screen picker). Everyone in the room gets it.
+  async startShare(stream) {
+    const s = this._s; if (!s || !stream) return;
+    if (this.sharing) await this.stopShare();
+    const track = stream.getVideoTracks()[0]; if (!track) return;
+    try { track.contentHint = 'detail'; } catch (_) {}
+    s.shareStream = stream; s.shareTrack = track; this.sharing = true;
+    track.addEventListener('ended', () => { if (s.shareTrack === track) this.stopShare(); });
+    for (const p of s.peers.values()) if (p.vsender) { await p.vsender.replaceTrack(track).catch(() => {}); this._tuneShare(p.vsender); }
+    updateDoc(this._self(), { screen: true }).catch(() => {});
+    this._change();
+  },
+  async stopShare() {
+    const s = this._s;
+    if (!this.sharing) return;
+    this.sharing = false;
+    if (s) {
+      for (const p of s.peers.values()) p.vsender?.replaceTrack(null).catch(() => {});
+      s.shareStream?.getTracks().forEach(t => t.stop());
+      s.shareStream = null; s.shareTrack = null;
+      updateDoc(this._self(), { screen: false }).catch(() => {});
+    }
+    this._change();
+  },
+  _tuneShare(sender) {
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings?.length) params.encodings = [{}];
+      params.encodings[0].maxBitrate = 3000000;
+      sender.setParameters(params).catch(() => {});
+    } catch (_) {}
   },
 
   // ---- plumbing
   _self() { return doc(db, this.room.path, 'voice', this.me.uid); },
-  _selfData(s) { return { id: this.me.id, session: s.session, muted: this.muted, deafened: this.deafened, at: serverTimestamp() }; },
+  _selfData(s) { return { id: this.me.id, session: s.session, muted: this.muted, deafened: this.deafened, ...(this.sharing ? { screen: true } : {}), at: serverTimestamp() }; },
   _beat(s) { if (!s.closed) updateDoc(this._self(), { at: serverTimestamp() }).catch(() => {}); },
   _change() { this.onChange?.(); },
   _fail(e) {
@@ -112,10 +171,10 @@ export const Voice = {
     const cfg = AudioSettings.get();
     try {
       s.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, ...(cfg.input ? { deviceId: { exact: cfg.input } } : {}) }
+        audio: { echoCancellation: cfg.echo !== false, noiseSuppression: cfg.noise !== false, autoGainControl: cfg.agc !== false, ...(cfg.input ? { deviceId: { exact: cfg.input } } : {}) }
       });
       s.track = s.stream.getAudioTracks()[0] || null;
-      if (s.track) s.track.enabled = !this.muted;
+      if (s.track) s.track.enabled = this.micOpen;
     } catch (e) {
       // No microphone (or blocked): you can still listen
       this.noMic = true; s.track = null; s.stream = null;
@@ -127,9 +186,10 @@ export const Voice = {
     AudioSettings.set({ input: deviceId });
     const s = this._s; if (!s) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, deviceId: { exact: deviceId } } });
+      const cfg = AudioSettings.get();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: cfg.echo !== false, noiseSuppression: cfg.noise !== false, autoGainControl: cfg.agc !== false, deviceId: { exact: deviceId } } });
       const track = stream.getAudioTracks()[0];
-      track.enabled = !this.muted;
+      track.enabled = this.micOpen;
       s.stream?.getTracks().forEach(t => t.stop());
       s.stream = stream; s.track = track; this.noMic = false;
       for (const p of s.peers.values()) p.sender?.replaceTrack(track).catch(() => {});
@@ -148,7 +208,7 @@ export const Voice = {
     for (const d of docs) {
       const x = d.data(), uid = d.id;
       if (uid !== this.me.uid && Date.now() - millis(x.at) > FRESH && !d.metadata.hasPendingWrites) continue;
-      next.set(uid, { uid, id: x.id, muted: !!x.muted, deafened: !!x.deafened, session: x.session, at: millis(x.at) });
+      next.set(uid, { uid, id: x.id, muted: !!x.muted, deafened: !!x.deafened, screen: !!x.screen, session: x.session, at: millis(x.at) });
     }
     this.participants = next;
     // Drop connections to people who left (or came back with a new session)
@@ -168,7 +228,7 @@ export const Voice = {
     for (const [uid, m] of s.meters) {
       m.an.getByteTimeDomainData(m.buf);
       let peak = 0; for (let i = 0; i < m.buf.length; i++) peak = Math.max(peak, Math.abs(m.buf[i] - 128));
-      const on = peak > 9 && !(uid === this.me.uid && this.muted);
+      const on = peak > 9 && !(uid === this.me.uid && !this.micOpen);
       if (on) m.hold = 4; else if (m.hold > 0) m.hold--;
       const talking = m.hold > 0;
       if (talking !== this.speaking.has(uid)) { talking ? this.speaking.add(uid) : this.speaking.delete(uid); changed = true; }
@@ -198,8 +258,10 @@ export const Voice = {
       this._change();
     };
     pc.ontrack = e => {
+      if (e.track.kind === 'video') { this.screens.set(uid, new MediaStream([e.track])); this._change(); return; }
       const a = new Audio();
       a.autoplay = true; a.srcObject = e.streams[0] || new MediaStream([e.track]); a.muted = this.deafened;
+      a.volume = clamp01(this.master * this.volumeOf(uid));
       const out = AudioSettings.get().output; if (out && a.setSinkId) a.setSinkId(out).catch(() => {});
       a.play().catch(() => {});
       p.audio = a; s.audios.add(a);
@@ -209,7 +271,7 @@ export const Voice = {
   },
   _closePeer(s, uid) {
     const p = s.peers.get(uid); if (!p) return;
-    s.peers.delete(uid); this.conn.delete(uid);
+    s.peers.delete(uid); this.conn.delete(uid); this.screens.delete(uid);
     try { p.pc.close(); } catch (_) {}
     if (p.audio) { p.audio.srcObject = null; s.audios.delete(p.audio); }
     const m = s.meters.get(uid); if (m) { try { m.src.disconnect(); } catch (_) {} s.meters.delete(uid); }
@@ -221,6 +283,10 @@ export const Voice = {
       const t = p.pc.addTransceiver('audio', { direction: 'sendrecv' });
       p.sender = t.sender;
       if (s.track) await t.sender.replaceTrack(s.track);
+      // A video lane that is always negotiated: sharing a screen later is just a replaceTrack, no renegotiation
+      const vt = p.pc.addTransceiver('video', { direction: 'sendrecv' });
+      p.vsender = vt.sender;
+      if (s.shareTrack) { await vt.sender.replaceTrack(s.shareTrack); this._tuneShare(vt.sender); }
       await p.pc.setLocalDescription(await p.pc.createOffer());
       this._send(s, uid, session, 'offer', JSON.stringify(p.pc.localDescription));
     } catch (_) { this._closePeer(s, uid); }
@@ -240,8 +306,11 @@ export const Voice = {
         p.queue.push(...(s.early.get(uid + x.session) || [])); s.early.delete(uid + x.session);
         await p.pc.setRemoteDescription(JSON.parse(x.data)); p.remoteSet = true;
         for (const c of p.queue.splice(0)) await p.pc.addIceCandidate(c).catch(() => {});
-        const t = p.pc.getTransceivers().find(t => t.receiver.track?.kind === 'audio');
-        if (t) { t.direction = 'sendrecv'; p.sender = t.sender; if (s.track) await t.sender.replaceTrack(s.track); }
+        for (const t of p.pc.getTransceivers()) {
+          const kind = t.receiver.track?.kind;
+          if (kind === 'audio') { t.direction = 'sendrecv'; p.sender = t.sender; if (s.track) await t.sender.replaceTrack(s.track); }
+          else if (kind === 'video') { t.direction = 'sendrecv'; p.vsender = t.sender; if (s.shareTrack) { await t.sender.replaceTrack(s.shareTrack); this._tuneShare(t.sender); } }
+        }
         await p.pc.setLocalDescription(await p.pc.createAnswer());
         this._send(s, uid, x.session, 'answer', JSON.stringify(p.pc.localDescription));
       } else {

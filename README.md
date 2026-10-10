@@ -41,4 +41,22 @@ Test accounts for the emulator are in `tools/test-accounts.json`.
   (Settings > Voice > Advanced).
 - Pictures and emoji are stored inside database documents (about 880 KB per picture), so there is
   no separate file hosting. Big videos and files are not supported yet.
-- Not built yet: screen sharing / video, soundboard, stickers, message editing, threads.
+- Not built yet: camera video, sound while screen sharing, soundboard, stickers, threads.
+
+## What's new in 0.2
+- **Screen sharing** with a screen/window picker (720p/1080p, 30/60 fps); people in the room watch it live.
+- **Volume**: one master level and a slider per person (hover their tile). Push-to-talk, noise suppression, echo cancellation.
+- **Bots**: auto-mod (blocked words, links, floods, shouting, mass mentions) and a welcome bot run on the owner's copy;
+  giveaways, polls and support tickets are stored in the database so they work any time.
+- **Server tools**: moderators, bans, announcement rooms, slowmode (enforced by the database rules), room rename, per-server mute, server info.
+- **Chat**: edit messages, search a room (Ctrl+F), @mentions, slash commands (`/help`), status (online / idle / do not disturb / invisible).
+- **Rate limiters**: slowmode per room, a per-message limit in the database rules, and client-side limiters for messages, reactions, uploads, friend requests and calls.
+- **Settings**: appearance (size, text size, bubbles or list, density, 24-hour clock), notifications, voice, keybinds, behaviour, account.
+- **Auto-updates**: the installed app checks GitHub Releases every 20 minutes, downloads in the background and installs quietly
+  (button: "Restart to update", or on the next quit).
+
+## Releasing an update
+1. Bump `version` in `package.json`, `npm run build`.
+2. `gh release create vX.Y.Z dist/Camelcord-Setup-X.Y.Z.exe` (the file name must start with `Camelcord-Setup-`).
+3. Everyone's installed copy picks it up on its own.
+

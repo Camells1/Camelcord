@@ -12,7 +12,7 @@ export const pairOf = (a, b) => [a, b].sort().join('_');
 const ONLINE_FOR = 150000; // a friend counts as online if they checked in within 2.5 minutes
 
 export const Friends = {
-  me: null, list: [], presence: new Map(), error: '', onChange: null,
+  me: null, list: [], presence: new Map(), error: '', loaded: false, onChange: null,
   _unsub: null, _presUnsubs: new Map(), _beat: null, _state: 'online',
 
   start(me) {
@@ -20,7 +20,7 @@ export const Friends = {
     this.stop(); this.me = me;
     const q = query(collection(db, 'friends'), where('users', 'array-contains', me.uid));
     this._unsub = onSnapshot(q, snap => {
-      this.error = '';
+      this.error = ''; this.loaded = true;
       this.list = snap.docs.map(d => {
         const x = d.data(), other = x.users.find(u => u !== me.uid);
         return { pair: d.id, uid: other, id: clean(x.ids?.[other] || 'Player'), status: x.status, incoming: x.status === 'pending' && x.from !== me.uid };
@@ -35,7 +35,7 @@ export const Friends = {
   stop() {
     this._unsub?.(); this._unsub = null;
     for (const s of this._presUnsubs.values()) s.un();
-    this._presUnsubs.clear(); this.presence.clear(); this.list = []; this.me = null;
+    this._presUnsubs.clear(); this.presence.clear(); this.list = []; this.loaded = false; this.me = null;
     clearInterval(this._beat);
   },
   // Watch presence for a set of uids; each caller (friends, a server's members) owns a named group
@@ -49,9 +49,11 @@ export const Friends = {
       this._presUnsubs.set(uid, { un });
     }
   },
+  // state: online | idle | dnd | invisible (invisible is written as offline so friends see you as away)
   async setPresence(state) {
     if (!this.me) return;
     this._state = state;
+    if (state === 'invisible') state = 'offline';
     try {
       const b = writeBatch(db);
       b.set(doc(db, 'presence', this.me.uid), { id: this.me.id, state, game: 'Camelcord', at: serverTimestamp() });
@@ -63,7 +65,7 @@ export const Friends = {
     const p = this.presence.get(uid);
     if (!p || p.state === 'offline') return 'offline';
     if (Date.now() - millis(p.at) > ONLINE_FOR) return 'offline';
-    return p.state === 'ingame' ? 'ingame' : 'online';
+    return ['ingame', 'idle', 'dnd'].includes(p.state) ? p.state : 'online';
   },
   isFriend(uid) { return this.list.some(f => f.uid === uid && f.status === 'accepted'); },
   async add(idText) {
@@ -100,7 +102,7 @@ export const Friends = {
 
 // ---------------------------------------------------------------- direct messages
 const cleanText = (t, max) => clean(String(t || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, max));
-export const msgOf = d => { const x = d.data(); return { id: d.id, from: x.from, text: clean(x.text || ''), img: typeof x.img === 'string' ? x.img : '', re: x.re || {}, at: millis(x.at), pending: d.metadata?.hasPendingWrites }; };
+export const msgOf = d => { const x = d.data(); return { id: d.id, from: x.from, text: clean(x.text || ''), img: typeof x.img === 'string' ? x.img : '', re: x.re || {}, edited: !!x.edited, bot: x.bot || '', app: x.app || '', at: millis(x.at), pending: d.metadata?.hasPendingWrites }; };
 export const readAt = key => +(localStorage.getItem('cc.read:' + key) || 0);
 export const markRead = key => localStorage.setItem('cc.read:' + key, String(Date.now()));
 
@@ -139,6 +141,11 @@ export const DMs = {
     b.set(doc(collection(db, 'chats', pairOf(this.me.uid, this.uid), 'messages')), { from: this.me.uid, text, ...(img ? { img } : {}), at: serverTimestamp() });
     stamp(b, this.me.uid, 'chat');
     await b.commit();
+  },
+  edit(mid, text) {
+    text = cleanText(text, 4000);
+    if (!text) throw new Error('A message can’t be empty.');
+    return updateDoc(doc(db, 'chats', pairOf(this.me.uid, this.uid), 'messages', mid), { text, edited: true });
   },
   // Toggle my reaction on a message
   react(mid, key, on) {

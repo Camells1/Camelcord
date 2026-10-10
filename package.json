@@ -1,6 +1,6 @@
 {
   "name": "camelcord",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "author": "Camel Studios",
   "description": "Camelcord: servers, text channels and voice calls with your Camel Studios account.",
   "main": "electron/main.js",
@@ -18,7 +18,7 @@
   "build": {
     "appId": "com.camelstudios.camelcord",
     "productName": "Camelcord",
-    "copyright": "© 2026 Camel Studios",
+    "copyright": "Â© 2026 Camel Studios",
     "files": [
       "electron/**/*",
       "src/**/*",
@@ -47,3 +47,4 @@
     }
   }
 }
+

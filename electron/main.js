@@ -1,7 +1,8 @@
 // Camelcord: the main process. A frameless window with our own title bar; the app itself
 // is a plain web page that talks to Firebase and WebRTC.
-const { app, BrowserWindow, ipcMain, shell, session, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, Notification, desktopCapturer } = require('electron');
 const path = require('path');
+const updater = require('./updater');
 
 const DEV = !app.isPackaged;
 let win = null;
@@ -32,6 +33,7 @@ else {
     session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(['media', 'notifications', 'display-capture'].includes(permission)));
     session.defaultSession.setPermissionCheckHandler((_wc, permission) => ['media', 'notifications', 'display-capture'].includes(permission));
     createWindow();
+    updater.init(s => send('update:state', s));
   });
 }
 app.on('window-all-closed', () => app.quit());
@@ -41,6 +43,17 @@ ipcMain.on('win:max', () => { if (!win) return; win.isMaximized() ? win.unmaximi
 ipcMain.on('win:close', () => win?.close());
 ipcMain.handle('app:info', () => ({ version: app.getVersion(), dev: DEV }));
 ipcMain.handle('open:url', (_e, url) => { if (/^https:\/\//.test(String(url))) shell.openExternal(url); });
+// Screens and windows that can be shared
+ipcMain.handle('screens:list', async () => {
+  const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: false });
+  return sources.filter(s => !/^Camelcord$/.test(s.name)).map(s => ({ id: s.id, name: s.name, screen: s.id.startsWith('screen:'), thumb: s.thumbnail.isEmpty() ? '' : s.thumbnail.toDataURL() }));
+});
+// Updates
+ipcMain.handle('update:state', () => updater.state);
+ipcMain.handle('update:check', async () => { await updater.check(); return updater.state; });
+ipcMain.handle('update:install', () => updater.install());
+// Launch when Windows starts
+ipcMain.handle('app:startup', (_e, on) => { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!on, args: ['--hidden'] }); return app.getLoginItemSettings().openAtLogin; });
 // Flash the taskbar for a message or an incoming call while the window is in the background
 ipcMain.on('app:attention', (_e, on) => { if (win && !win.isFocused()) win.flashFrame(!!on); });
 ipcMain.on('app:notify', (_e, { title, body }) => {

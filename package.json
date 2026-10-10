@@ -1,0 +1,49 @@
+{
+  "name": "camelcord",
+  "version": "0.1.1",
+  "author": "Camel Studios",
+  "description": "Camelcord: servers, text channels and voice calls with your Camel Studios account.",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "serve": "node tools/serve.js",
+    "emu": "firebase emulators:start --only auth,firestore --project demo-camelcord",
+    "build": "electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.camelstudios.camelcord",
+    "productName": "Camelcord",
+    "copyright": "© 2026 Camel Studios",
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "vendor/**/*",
+      "assets/**/*",
+      "index.html",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Camelcord",
+      "runAfterFinish": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "artifactName": "Camelcord-Setup-${version}.${ext}"
+    }
+  }
+}

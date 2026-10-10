@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: data:; connect-src https: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:*" />
+  <title>Camelcord</title>
+  <link rel="stylesheet" href="src/style.css" />
+</head>
+<body>
+  <header id="bar">
+    <div class="brand"><svg viewBox="0 0 64 64"><use href="#camelglyph"/></svg><b>Camelcord</b></div>
+    <div class="drag"></div>
+    <div class="win-btns">
+      <button data-win="min" title="Minimise"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+      <button data-win="max" title="Maximise"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7"/></svg></button>
+      <button data-win="close" class="close" title="Close"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+    </div>
+  </header>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--gold)"/><stop offset="1" style="stop-color:var(--orange)"/></linearGradient>
+      <g id="camelglyph" fill="none">
+        <circle cx="47" cy="15" r="7" fill="url(#g)"/>
+        <path d="M5 45 C12 45 14 25 22 25 C29 25 29 37 33 37 C37 37 37 21 45 21 C53 21 55 45 59 45" stroke="url(#g)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M5 53 H59" stroke="url(#g)" stroke-width="3" stroke-linecap="round" opacity=".55"/>
+      </g>
+    </defs>
+  </svg>
+
+  <!-- Splash while we find out who is signed in -->
+  <section id="splash"><svg viewBox="0 0 64 64"><use href="#camelglyph"/></svg><span>Camelcord</span></section>
+
+  <!-- Sign in -->
+  <section id="login" class="hidden">
+    <div class="login-art">
+      <div class="sun"></div>
+      <svg class="dunes" viewBox="0 0 800 400" preserveAspectRatio="none">
+        <path d="M0 260 C140 190 260 300 420 240 C560 190 680 260 800 210 V400 H0Z" style="fill:color-mix(in srgb, var(--gold) 14%, var(--bg1))"/>
+        <path d="M0 310 C160 250 300 350 460 295 C600 250 700 320 800 280 V400 H0Z" style="fill:color-mix(in srgb, var(--gold) 8%, var(--bg0))"/>
+        <path d="M0 350 C200 310 360 380 520 340 C640 312 740 360 800 335 V400 H0Z" style="fill:var(--bg0)"/>
+      </svg>
+      <div class="art-copy"><svg viewBox="0 0 64 64"><use href="#camelglyph"/></svg><h2>Hang out with your friends.</h2><p>Servers, text channels and voice calls. Same Camel Studios account as the games.</p></div>
+    </div>
+    <div class="login-panel">
+      <h1 id="login-title">Welcome back</h1>
+      <p class="login-sub" id="login-sub">Sign in with your Camel Studios account.</p>
+      <form id="f-in" autocomplete="on">
+        <label>Email<input id="in-email" type="email" autocomplete="username" required /></label>
+        <label>Password<input id="in-pass" type="password" autocomplete="current-password" required /></label>
+        <label class="check"><input id="in-stay" type="checkbox" checked /> Stay signed in</label>
+        <button class="go" type="submit">Sign in</button>
+        <div class="login-links"><a id="l-reset">Forgot password?</a><a id="l-up">Create account</a></div>
+      </form>
+      <form id="f-up" class="hidden" autocomplete="off">
+        <label>Username<input id="up-name" maxlength="14" placeholder="At least 3 characters" required /></label>
+        <label>Email<input id="up-email" type="email" required /></label>
+        <label>Password<input id="up-pass" type="password" autocomplete="new-password" required /></label>
+        <button class="go" type="submit">Create account</button>
+        <div class="login-links"><a id="l-in">I already have an account</a></div>
+      </form>
+      <form id="f-reset" class="hidden">
+        <label>Email<input id="rs-email" type="email" required /></label>
+        <button class="go" type="submit">Send reset link</button>
+        <div class="login-links"><a id="l-in2">Back to sign in</a></div>
+      </form>
+      <div id="login-msg" class="login-msg"></div>
+    </div>
+  </section>
+
+  <!-- The app -->
+  <main id="app" class="hidden">
+    <nav id="rail"></nav>
+    <aside id="side"></aside>
+    <section id="center"></section>
+    <aside id="members"></aside>
+  </main>
+
+  <div id="layer"></div>
+  <div id="toasts"></div>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
